@@ -1,0 +1,11 @@
+instance_name: Test Akkoma Instance
+instance_url: akkoma.example.com
+account_domain: null
+admin_email: admin@example.com
+notify_email: noreply@example.com
+indexable: false
+strip_uploads: true
+anonymize_uploads: true
+dedupe_uploads: true
+rum_indices: true
+mix_env: dev

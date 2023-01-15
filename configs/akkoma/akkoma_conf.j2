@@ -1,0 +1,61 @@
+# Pleroma instance configuration
+
+# NOTE: This file should not be committed to a repo or otherwise made public
+# without removing sensitive information.
+
+import Config
+
+config :pleroma, Pleroma.Web.Endpoint,
+    url: [host: "{{ instance_url }}", scheme: "https", port: 443],
+    http: [ip: {127, 0, 0, 1}, port: 9001],
+    secret_key_base: "{{ secret_key_base }}",
+    live_view: [signing_salt: "{{ live_view_salt }}"],
+    signing_salt: "{{ signing_salt }}"
+
+{% if account_domain | default(None) is not none %}
+config :pleroma, Pleroma.Web.WebFinger, domain: "{{ account_domain }}"
+{% endif %}
+
+config :pleroma, Pleroma.Repo,
+    adapter: Ecto.Adapters.Postgres,
+    username: "akkoma",
+    password: "{{ db_pass }}",
+    database: "akkoma",
+    hostname: "localhost",
+    prepare: :named,
+    parameters: [
+        plan_cache_mode: "force_custom_plan",
+        effective_cache_size: "768MB",
+        maintenance_work_mem: "64MB",
+        work_mem: "13107kB"
+    ]
+
+config :pleroma, :database, rum_enabled: {{ rum_indices | ternary("true", "false")}}
+config :pleroma, configurable_from_database: true
+
+##### BEGIN removing migrated configs #####
+config :pleroma, :instance,
+    name: "{{ instance_name }}",
+    email: "{{ admin_email }}",
+    notify_email: "{{ notify_email }}",
+    limit: 5000,
+    federating: false,
+    registrations_open: false
+
+# Enable Strict-Transport-Security once SSL is working:
+config :pleroma, :http_security,
+    enabled: true,
+    referrer_policy: "no-referrer"
+
+# Configure web push notifications
+config :web_push_encryption, :vapid_details,
+    subject: "mailto:{{ admin_email }}",
+    public_key: "{{ toast_pubkey }}",
+    private_key: "{{ toast_privkey }}"
+
+config :pleroma, :instance, static_dir: "/usr/home/akkoma/akkoma/instance/static"
+config :pleroma, Pleroma.Uploaders.Local, uploads: "/usr/home/akkoma/akkoma/uploads"
+config :joken, default_signer: "{{ joken_default_signer }}"
+
+config :pleroma, Pleroma.Upload, filters: {{ upload_filters | tojson }}
+##### END removing migrated configs #####

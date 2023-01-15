@@ -1,0 +1,13 @@
+# Caddyfile config for Akkoma
+
+{{ instance_url }} {
+  log {
+    output file /var/log/caddy/akkoma.log
+  }
+
+  encode gzip
+
+  # this is explicitly IPv4 since Pleroma.Web.Endpoint binds on IPv4 only
+  # and `localhost.` resolves to [::0] on some systems: see issue #930
+  reverse_proxy localhost:9001
+}
