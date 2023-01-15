@@ -1,0 +1,13 @@
+postgres {
+    exec.start = "/bin/sh /etc/rc";
+    exec.stop = "/bin/sh /etc/rc.shutdown";
+    exec.clean;
+    host.hostname = "postgres";
+    ip4=inherit;
+    mount.devfs;
+    mount.fstab = "/usr/local/jail/postgres.fstab";
+    path = "/usr/local/jail/postgres";
+    sysvmsg = new;
+    sysvsem = new;
+    sysvshm = new;
+}

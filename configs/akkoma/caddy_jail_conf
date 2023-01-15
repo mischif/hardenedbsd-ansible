@@ -1,0 +1,10 @@
+caddy {
+    exec.start = "/bin/sh /etc/rc";
+    exec.stop = "/bin/sh /etc/rc.shutdown";
+    exec.clean;
+    host.hostname = "caddy";
+    ip4=inherit;
+    mount.devfs;
+    mount.fstab = "/usr/local/jail/caddy.fstab";
+    path = "/usr/local/jail/caddy";
+}

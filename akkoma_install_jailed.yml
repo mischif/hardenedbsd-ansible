@@ -1,0 +1,431 @@
+- name: Download host dependencies
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  tasks:
+    - name: Install Postgres client
+      community.general.pkgng:
+        name: postgresql13-client
+
+
+- name: Prepare thinjails
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  tasks:
+    - name: Create update directory
+      ansible.builtin.file:
+        path: /tmp/update
+        state: directory
+        mode: 0755
+
+    - name: Create thinjail base directories
+      loop:
+        - /usr/local/jail/thin/base/usr
+        - /usr/local/jail/thin/base/skel
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+
+    - name: Create thinjail skeleton directories
+      loop:
+        - /usr/local/jail/thin/skeleton/usr/ports/distfiles
+        - /usr/local/jail/thin/skeleton/home
+        - /usr/local/jail/thin/skeleton/portsbuild
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+
+    - name: Create thinjail data directory
+      ansible.builtin.file:
+        path: /usr/local/jail/thin/data/akkoma
+        state: directory
+        mode: 0755
+
+    - name: Install system in thinjail base
+      ansible.builtin.command:
+        cmd: hbsd-update -dTt /tmp/update -r /usr/local/jail/thin/base/
+        creates: /usr/local/jail/thin/base/COPYRIGHT
+
+    - name: Unset flag to allow file deletion
+      ansible.builtin.command:
+        cmd: chflags noschg /usr/local/jail/thin/base/etc/secadm.d/base.integriforce.rules
+
+    - name: Copy jail-unique files to skeleton
+      loop:
+        - etc
+        - root
+        - tmp
+        - usr/local
+        - var
+      ansible.builtin.copy:
+        src: /usr/local/jail/thin/base/{{ item }}/
+        dest: /usr/local/jail/thin/skeleton/{{ item }}
+        remote_src: true
+        mode: preserve
+
+    - name: Delete jail-unique files from base
+      loop:
+        - etc
+        - root
+        - tmp
+        - usr/local
+        - var
+      ansible.builtin.file:
+        path: /usr/local/jail/thin/base/{{ item }}
+        state: absent
+
+    - name: Update skeleton tmpdir permissions
+      ansible.builtin.file:
+        path: /usr/local/jail/thin/skeleton/tmp
+        state: touch
+        mode: 01777
+
+    - name: Copy DNS info into skeleton
+      ansible.builtin.copy:
+        src: /etc/resolv.conf
+        dest: /usr/local/jail/thin/skeleton/etc/resolv.conf
+        remote_src: true
+        mode: 0644
+
+    - name: Create symlinks from base to skeleton
+      loop:
+        - etc
+        - home
+        - root
+        - tmp
+        - usr/local
+        - usr/ports
+        - var
+      ansible.builtin.file:
+        dest: /usr/local/jail/thin/base/{{ item }}
+        src: /skel/{{ item }}
+        state: link
+        force: true
+        follow: false
+        mode: 0755
+
+    - name: Instruct ports to build in jail-unique space
+      ansible.builtin.lineinfile:
+        path: /usr/local/jail/thin/skeleton/etc/make.conf
+        create: true
+        line: WRKDIRPREFIX?=  /skel/portsbuild
+        mode: 0644
+
+    - name: Create thinjails
+      loop:
+        - akkoma
+        - caddy
+        - postgres
+      ansible.builtin.include_tasks:
+        file: create_jail.yml
+
+
+- name: Prepare Akkoma jail
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  vars_files:
+    - vars/akkoma.yml
+  vars:
+    akkoma_deps:
+      - elixir
+      - elixir-hex
+      - git-lite
+      - gmake
+      - cmake-core
+      - ImageMagick7-nox11
+      - ffmpeg
+    upload_filters:
+      - Pleroma.Upload.Filter.AnonymizeFilename
+      - Pleroma.Upload.Filter.Dedupe
+  tasks:
+    - name: Create service user
+      ansible.builtin.command:
+        cmd: jexec akkoma pw add user akkoma -m -u 1337
+
+    - name: Gather optional dependencies
+      loop:
+        - p5-Image-ExifTool
+      when: >-
+        (item == "p5-Image-ExifTool" and strip_uploads)
+      ansible.builtin.set_fact:
+        akkoma_deps: "{{ akkoma_deps + [item] }}"
+
+    - name: Install Akkoma dependencies
+      community.general.pkgng:
+        name: "{{ akkoma_deps }}"
+        jail: akkoma
+
+    - name: Download Akkoma source
+      ansible.builtin.git:
+        repo: https://akkoma.dev/AkkomaGang/akkoma.git
+        version: stable
+        dest: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma
+        single_branch: true
+        update: false
+
+    - name: Check out latest release
+      ansible.builtin.shell:
+        cmd: git checkout $(git tag -l | grep -v 'rc[0-9]*$' | sort -V | tail -n 1)
+        chdir: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma
+
+    - name: Set ownership
+      ansible.builtin.command:
+        cmd: jexec akkoma chown -R akkoma:akkoma /home/akkoma/akkoma
+
+    - name: Install rebar3
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix local.rebar --force'
+        creates: /usr/local/jail/thin/data/akkoma/home/akkoma/.mix/rebar3
+
+    - name: Install Akkoma Erlang dependencies
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix deps.get'
+        # creates: /home/akkoma/.mix/rebar3
+
+    - name: Generate database user password
+      ansible.builtin.set_fact:
+        db_pass: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_letters,digits length=22') }}"
+
+    - name: Compile Akkoma source
+      environment:
+        MIX_ENV: "{{ mix_env }}"
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix pleroma.instance gen
+          --listen-ip 127.0.0.1
+          --listen-port 9001
+          --uploads-dir "uploads"
+          --static-dir "instance/static"
+          --db-configurable y
+          --dbhost localhost
+          --dbname akkoma
+          --dbuser akkoma
+          --dbpass "{{ db_pass }}"
+          --domain "{{ instance_url }}"
+          --instance-name "{{ instance_name }}"
+          --admin-email "{{ admin_email }}"
+          --notify-email "{{ notify_email }}"
+          --indexable {{ indexable | ternary("y", "n") }}
+          --strip-uploads {{ strip_uploads | ternary("y", "n") }}
+          --anonymize-uploads {{ anonymize_uploads | ternary("y", "n") }}
+          --dedupe-uploads {{ dedupe_uploads | ternary("y", "n") }}
+          --rum {{ rum_indices | ternary("y", "n") }}'
+        creates: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/generated_config.exs
+
+    - name: Ingest autogenerated config file
+      register: akkoma_config
+      ansible.builtin.slurp:
+        src: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/generated_config.exs
+
+    - name: Extract secret_key_base
+      ansible.builtin.set_fact:
+        secret_key_base: "{{ akkoma_config['content'] | b64decode | regex_search('(?<=secret_key_base: \").+(?=\")') }}"
+
+    - name: Extract live view signing salt
+      ansible.builtin.set_fact:
+        live_view_salt: "{{ akkoma_config['content'] | b64decode | regex_search('(?<=signing_salt: \").+(?=\")') }}"
+
+    - name: Extract signing salt
+      ansible.builtin.set_fact:
+        signing_salt: "{{ akkoma_config['content'] | b64decode | regex_search('(?<= signing_salt: \").+(?=\")') }}"
+
+    - name: Extract web toast pubkey
+      ansible.builtin.set_fact:
+        toast_pubkey: "{{ akkoma_config['content'] | b64decode | regex_search('(?<=public_key: \").+(?=\")') }}"
+
+    - name: Extract web toast privkey
+      ansible.builtin.set_fact:
+        toast_privkey: "{{ akkoma_config['content'] | b64decode | regex_search('(?<=private_key: \").+(?=\")') }}"
+
+    - name: Extract Joken default signer
+      ansible.builtin.set_fact:
+        joken_default_signer: "{{ akkoma_config['content'] | b64decode | regex_search('(?<=default_signer: \").+(?=\")') }}"
+
+    - name: Add optional filters
+      loop:
+        - Pleroma.Upload.Filter.Exiftool
+      when: >-
+        (item == "Pleroma.Upload.Filter.Exiftool" and strip_uploads)
+      ansible.builtin.set_fact:
+        upload_filters: "{{ upload_filters + [item] }}"
+
+    - name: Write Akkoma config
+      ansible.builtin.template:
+        src: configs/akkoma/akkoma_conf.j2
+        dest: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/{{ mix_env }}.secret.exs
+        mode: 0600
+
+    - name: Set Akkoma config ownership
+      ansible.builtin.command:
+        cmd: jexec akkoma chown -R akkoma:akkoma /home/akkoma/akkoma/config
+
+    - name: Write Akkoma service file
+      ansible.builtin.template:
+        src: configs/akkoma/akkoma_rc.j2
+        dest: /usr/local/jail/thin/data/akkoma/etc/rc.d/akkoma
+        mode: 0755
+
+    - name: Delete autogenerated Akkoma config
+      ansible.builtin.file:
+        path: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/generated_config.exs
+        state: absent
+
+    - name: Enable Akkoma on jail start
+      community.general.sysrc:
+        name: akkoma_enable
+        value: "YES"
+        jail: akkoma
+
+
+- name: Prepare Postgres jail
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  vars_files:
+    - vars/akkoma.yml
+  vars:
+    pg_deps:
+      - postgresql13-server
+      - postgresql13-contrib
+  tasks:
+    - name: Gather optional dependencies
+      loop:
+        - postgresql13-rum
+      when: >-
+        (item == "postgresql13-rum" and rum_indices)
+      ansible.builtin.set_fact:
+        pg_deps: "{{ pg_deps + [item] }}"
+
+    - name: Install Postgres
+      community.general.pkgng:
+        name: "{{ pg_deps }}"
+        jail: postgres
+
+    - name: Initialize Postgres
+      ansible.builtin.command:
+        cmd: jexec postgres service postgresql oneinitdb
+
+    - name: Start Postgres
+      ansible.builtin.command:
+        cmd: jexec postgres service postgresql onestart
+
+    - name: Create database
+      ansible.builtin.command:
+        cmd: >
+          psql -U postgres -h localhost
+          -f /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/setup_db.psql
+
+    - name: Prevent passwordless database login
+      ansible.builtin.replace:
+        path: /usr/local/jail/thin/data/postgres/var/db/postgres/data13/pg_hba.conf
+        regexp: "trust$"
+        replace: "password"
+
+    - name: Execute database migrations
+      environment:
+        MIX_ENV: "{{ mix_env }}"
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix ecto.migrate'
+
+    - name: Execute RUM-specific database migrations
+      when: rum_indices
+      environment:
+        MIX_ENV: "{{ mix_env }}"
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix ecto.migrate
+          --migrations-path priv/repo/optional_migrations/rum_indexing/'
+
+    - name: Migrate config to database
+      environment:
+        MIX_ENV: "{{ mix_env }}"
+      ansible.builtin.command:
+        cmd: >
+          jexec akkoma su akkoma -c 'cd ~/akkoma &&
+          mix pleroma.config migrate_to_db'
+
+    - name: Delete generated Postgres setup script
+      ansible.builtin.file:
+        path: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/setup_db.psql
+        state: absent
+
+    - name: Remove migrated configs from config file
+      ansible.builtin.blockinfile:
+        path: /usr/local/jail/thin/data/akkoma/home/akkoma/akkoma/config/{{ mix_env }}.secret.exs
+        marker: "##### {mark} removing migrated configs #####"
+        state: absent
+
+    - name: Enable Postgres on jail start
+      community.general.sysrc:
+        name: postgresql_enable
+        value: "YES"
+        jail: postgres
+
+
+- name: Prepare Caddy jail
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  vars_files:
+    - vars/akkoma.yml
+  tasks:
+    - name: Install Caddy
+      community.general.pkgng:
+        name: www/caddy
+        jail: caddy
+
+    - name: Write Caddyfile
+      ansible.builtin.template:
+        src: configs/akkoma/caddyfile.j2
+        dest: /usr/local/jail/thin/data/caddy/usr/local/etc/caddy/Caddyfile
+        mode: 0644
+
+    - name: Enable Caddy on jail start
+      community.general.sysrc:
+        name: caddy_enable
+        value: "YES"
+        jail: caddy
+
+
+- name: Make final host changes
+  gather_facts: false
+  hosts: all
+  become: true
+  become_method: su
+  tasks:
+    - name: Enable jail functionality on boot
+      community.general.sysrc:
+        name: jail_enable
+        value: "YES"
+
+    - name: Start jails on boot
+      community.general.sysrc:
+        name: jail_list
+        value: "postgres akkoma caddy"
+
+    - name: Stop jails in reverse order
+      community.general.sysrc:
+        name: jail_reverse_stop
+        value: "YES"
+
+    - name: Open HTTP ports on firewall
+      ansible.builtin.lineinfile:
+        path: /etc/pf.conf
+        line: "\n# Inbound HTTP traffic is OK\npass in quick inet proto tcp to any port {http, https}"

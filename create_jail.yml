@@ -1,0 +1,34 @@
+- name: Create writable copy of skeleton for {{ item }} thinjail 
+  ansible.builtin.copy:
+    src: /usr/local/jail/thin/skeleton/
+    dest: /usr/local/jail/thin/data/{{ item }}
+    remote_src: true
+    mode: preserve
+
+- name: Create {{ item }} jail root
+  ansible.builtin.file:
+    path: /usr/local/jail/{{ item }}
+    state: directory
+    mode: 0755
+
+- name: Write {{ item }} jail fstab
+  ansible.builtin.template:
+    src: configs/akkoma/fstab.j2
+    dest: /usr/local/jail/{{ item }}.fstab
+    mode: 0644
+
+- name: Write {{ item }} jail conf file
+  ansible.builtin.copy:
+    src: configs/akkoma/{{ item }}_jail_conf
+    dest: /etc/jail.conf.d/{{ item }}.conf
+    mode: 0644
+
+- name: Write {{ item }} jail rc.conf
+  ansible.builtin.template:
+    src: configs/akkoma/jail_rc.j2
+    dest: /usr/local/jail/thin/data/{{ item }}/etc/rc.conf
+    mode: 0644
+
+- name: Start {{ item }} thinjail
+  ansible.builtin.command:
+    cmd: service jail onestart {{ item }}

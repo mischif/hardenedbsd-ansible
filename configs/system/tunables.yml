@@ -116,6 +116,9 @@ loader_tunables:
     # Load encrypted swapfile module
     geom_eli_load: "YES"
 
+    # Load nullfs module for thinjails
+    nullfs_load: "YES"
+
   sysctl:
     # Increase the minimum entropy pool size necessary to cause a reseed
     kern.random.fortuna.minpoolsize: 128
