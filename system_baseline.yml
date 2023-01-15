@@ -1,0 +1,239 @@
+- name: Set single tmpdir
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Get stats of /var/tmp
+      register: p
+      ansible.builtin.stat:
+        path: /var/tmp
+
+    - name: Copy /var/tmp into /tmp
+      when: p.stat.islnk is defined and not p.stat.islnk
+      ansible.builtin.copy:
+        src: /var/tmp/
+        dest: /tmp/
+        remote_src: true
+        mode: 0777
+
+    - name: Delete /var/tmp
+      when: p.stat.islnk is defined and not p.stat.islnk
+      ansible.builtin.file:
+        path: /var/tmp
+        state: absent
+
+    - name: Symlink /var/tmp to /tmp
+      when: p.stat.islnk is defined and not p.stat.islnk
+      ansible.builtin.file:
+        src: /tmp
+        dest: /var/tmp
+        state: link
+        mode: 01777
+
+
+- name: Prepare primary user
+  gather_facts: false
+  hosts: all
+  vars_files:
+    - vars/user.yml
+  tasks:
+    - name: Create primary user's group
+      ansible.builtin.group:
+        name: "{{ primary_user }}"
+
+    - name: Create primary user
+      ansible.builtin.user:
+        name: "{{ primary_user }}"
+        group: "{{ primary_user }}"
+        groups:
+          - wheel
+
+    - name: Add primary user's SSH key
+      ansible.posix.authorized_key:
+        user: "{{ primary_user }}"
+        exclusive: true
+        key: "{{ primary_key }}"
+
+
+- name: Update base system
+  gather_facts: false
+  hosts: all
+  vars_files:
+    - vars/system.yml
+  tasks:
+    - name: Create update storage location
+      ansible.builtin.file:
+        path: /tmp/update
+        state: directory
+
+    - name: Run hbsd-update
+      ansible.builtin.command:
+        cmd: hbsd-update -dTt /tmp/update
+        creates: /var/db/hbsd-update/version
+
+    - name: Delete update
+      when: not keep_update
+      ansible.builtin.file:
+        path: /tmp/update
+        state: absent
+
+
+- name: Collect build dependencies
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Install binary dependencies
+      community.general.pkgng:
+        name:
+          - git-lite
+          - portupgrade
+          - amd64-binutils
+          - pkgconf
+          - autoconf
+          - automake
+          - texinfo
+          - perl5
+
+    - name: Download ports
+      ansible.builtin.git:
+        repo: https://git.hardenedbsd.org/hardenedbsd/ports.git
+        version: hardenedbsd/main
+        dest: /usr/ports/
+        single_branch: true
+        depth: 1
+
+    - name: Update ports index
+      ansible.builtin.command:
+        cmd: portsdb -Fu
+        creates: /usr/ports/INDEX-13.db
+
+
+- name: Install ports
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Install LibreSSL
+      community.general.portinstall:
+        name: security/libressl-devel
+        use_packages: false
+
+    - name: Instruct ports to use LibreSSL
+      ansible.builtin.lineinfile:
+        path: /etc/make.conf
+        create: true
+        line: DEFAULT_VERSIONS+=ssl=libressl-devel
+        mode: 0644
+
+    - name: Install OpenSSH
+      community.general.portinstall:
+        name: security/openssh-portable
+        use_packages: false
+
+    - name: Create new Ed25519 keypair
+      ansible.builtin.command:
+        cmd: >
+          /usr/local/bin/ssh-keygen -q -t ed25519 -N ""
+          -f /usr/local/etc/ssh/ssh_host_ed25519_key
+        creates: /usr/local/etc/ssh/ssh_host_ed25519_key
+
+    - name: Create new RSA keypair
+      ansible.builtin.command:
+        cmd: >
+          /usr/local/bin/ssh-keygen -q -t rsa -b 4096 -N ""
+          -f /usr/local/etc/ssh/ssh_host_rsa_key
+        creates: /usr/local/etc/ssh/ssh_host_rsa_key
+
+    - name: Install OpenNTPD
+      community.general.portinstall:
+        name: net/openntpd
+        use_packages: false
+
+
+- name: Update conf files
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Generate SSH port number
+      ansible.builtin.set_fact:
+        ssh_port: "{{ range(2200, 2300) | random }}"
+
+    - name: Encrypt swapfile
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: ^([^\s\.]+)(?=\s.*swap)
+        replace: \1.eli
+
+    - name: Allow wheel users to su without password
+      ansible.builtin.copy:
+        src: configs/system/su
+        dest: /etc/pam.d/su
+        mode: 0644
+
+    - name: Prevent root console logins
+      ansible.builtin.replace:
+        path: /etc/ttys
+        regexp: "secure$"
+        replace: "insecure"
+
+    - name: Use updated ntpd config
+      ansible.builtin.copy:
+        src: configs/system/ntpd
+        dest: /usr/local/etc/ntpd.conf
+        mode: 0644
+        validate: /usr/local/sbin/ntpd -n -f %s
+
+    - name: Use updated sshd config
+      ansible.builtin.template:
+        src: configs/system/sshd.j2
+        dest: /usr/local/etc/ssh/sshd_config
+        mode: 0600
+        validate: /usr/local/sbin/sshd -t -f %s
+
+    - name: Log SSH port number
+      ansible.builtin.debug:
+        msg: SSH will be open on port {{ ssh_port }}
+
+    - name: Add basic firewall rules
+      ansible.builtin.template:
+        src: configs/system/pf.j2
+        dest: /etc/pf.conf
+        mode: 0600
+        validate: pfctl -nf %s
+
+- name: Add tunables
+  gather_facts: false
+  hosts: all
+  vars_files:
+    - configs/system/tunables.yml
+  tasks:
+    - name: Remove default entries from rc.conf
+      ansible.builtin.lineinfile:
+        path: /etc/rc.conf
+        state: absent
+        regexp: "^syslogd_flags|^clear_tmp|^sendmail|^sshd|^ntpd|dumpdev"
+
+    - name: Add rc-style tunables to loader.conf
+      with_dict: "{{ loader_tunables['sysrc'] }}"
+      community.general.sysrc:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        path: /boot/loader.conf
+
+    - name: Add OID-style tunables to loader.conf
+      with_dict: "{{ loader_tunables['sysctl'] }}"
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /boot/loader.conf
+        reload: false
+
+    - name: Add sysctl.conf tunables
+      with_dict: "{{ sysctl_tunables }}"
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+
+    - name: Add rc.conf tunables
+      with_dict: "{{ rc_tunables }}"
+      community.general.sysrc:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"

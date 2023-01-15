@@ -1,0 +1,14 @@
+# Loopback traffic is OK
+set skip on lo0
+
+# Normalize incoming packets
+scrub in all
+
+# Default deny
+block drop
+
+# Outbound IPv4 traffic is OK
+pass out inet all
+
+# Inbound SSH traffic is OK
+pass in quick inet proto tcp to any port {{ ssh_port }} 

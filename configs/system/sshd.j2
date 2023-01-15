@@ -1,0 +1,74 @@
+Port {{ ssh_port }}
+AddressFamily inet
+ListenAddress 0.0.0.0
+PidFile /var/run/sshd.pid
+
+HostKey /usr/local/etc/ssh/ssh_host_rsa_key
+HostKey /usr/local/etc/ssh/ssh_host_ed25519_key
+
+# Ciphers and keying
+Ciphers chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes256-ctr
+RekeyLimit default none
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+FingerprintHash sha256
+
+# Authentication
+PermitRootLogin no
+LoginGraceTime 1m
+MaxAuthTries 6
+MaxSessions 3
+#PrintLastLog yes								# Currently unsupported
+
+PubkeyAuthentication yes
+RequiredRSASize 3072
+PubkeyAuthOptions touch-required
+
+# The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
+# but this is overridden so installations will only check .ssh/authorized_keys
+AuthorizedKeysFile	.ssh/authorized_keys
+
+# Other unused auth types
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+HostbasedAuthentication no
+#KerberosAuthentication no						# Currently unsupported
+#GSSAPIAuthentication no						# Currently unsupported
+
+# Set this to 'yes' to enable PAM authentication, account processing,
+# and session processing. If this is enabled, PAM authentication will
+# be allowed through the KbdInteractiveAuthentication and
+# PasswordAuthentication.  Depending on your PAM configuration,
+# PAM authentication via KbdInteractiveAuthentication may bypass
+# the setting of "PermitRootLogin without-password".
+# If you just want the PAM account and session checks to run without
+# PAM authentication, then enable this but set PasswordAuthentication
+# and KbdInteractiveAuthentication to 'no'.
+UsePAM no
+
+TCPKeepAlive no
+ClientAliveInterval 30
+ClientAliveCountMax 3
+
+DisableForwarding yes
+PermitTunnel no
+
+PermitUserRC no
+PermitUserEnvironment no
+StrictModes yes
+
+GatewayPorts no
+PermitTTY yes
+Compression yes
+UseDNS no
+MaxStartups 10:30:100
+ChrootDirectory none
+
+# no default banner path
+Banner none
+PrintMotd no
+
+# override default of no subsystems
+Subsystem	sftp	/usr/libexec/sftp-server

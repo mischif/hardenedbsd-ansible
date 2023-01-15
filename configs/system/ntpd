@@ -1,0 +1,6 @@
+servers 0.freebsd.pool.ntp.org
+servers time.nist.gov
+sensor *
+
+constraint from "9.9.9.9"
+constraints from "https://www.freebsd.org"

@@ -1,0 +1,124 @@
+sysctl_tunables:
+  # Prevent shared memory from being paged to swap
+  kern.ipc.shm_use_phys: 1
+
+  # no loading kernel modules
+  hardening.pax.kmod_load_disable: 1
+
+  # Harden runtime linker
+  hardening.harden_rtld: 1
+
+  # Disable IP options processing
+  net.inet.ip.process_options: 0
+
+  # Disable sending IP redirects
+  net.inet.ip.redirect: 0
+
+  # Set congestion control algorithm to Cubic
+  net.inet.tcp.cc.algorithm: cubic
+
+  # Drop TCP packets with SYN+FIN set
+  net.inet.tcp.drop_synfin: 1
+
+  # Restrict ability to change keymap
+  hw.kbd.keymap_restrict_change: 4
+
+### Other tunables that should already be handled by HardenedBSD,
+### will keep them in case I want to go back to FreeBSD
+
+  # Disable coredumps
+  kern.coredump: 0
+
+  # Show timestamp in msgbuf
+  kern.msgbuf_show_timestamp: 1
+
+  # Do not allow unprivileged processes to see subjects/objects with different real gid
+  security.bsd.see_other_gids: 0
+
+  # Do not allow unprivileged processes to see subjects/objects with different real uid
+  security.bsd.see_other_uids: 0
+
+  # Unprivileged processes cannot create hard links to files owned by other groups
+  security.bsd.hardlink_check_gid: 1
+
+  # Unprivileged processes cannot create hard links to files owned by other users
+  security.bsd.hardlink_check_uid: 1
+
+  # Insert stack guard page ahead of the growable segments
+  security.bsd.stack_guard_page: 1
+
+  # Unprivileged processes may not use process debugging and tracing facilities
+  security.bsd.unprivileged_proc_debug: 0
+
+  # Unprivileged processes may not read the kernel message buffer
+  security.bsd.unprivileged_read_msgbuf: 0
+
+  # Assign random IP ID values
+  net.inet.ip.random_id: 1
+
+  # Do not send RST on segments to closed ports
+  net.inet.tcp.blackhole: 2
+
+  # Do not send port unreachables for refused connects
+  net.inet.udp.blackhole: 2
+
+  # Do not use addresses with expired preferred lifetimes
+  net.inet6.ip6.use_deprecated: 0
+
+  # Use IPv6 temporary addresses with SLAAC
+  net.inet6.ip6.use_tempaddr: 1
+
+  # Prefer IPv6 temporary address generated last
+  net.inet6.ip6.prefer_tempaddr: 1
+
+rc_tunables:
+  # Disable crash dumps
+  dumpdev: "NO"
+
+  # Ensure syslogd doesn't bind to a network socket if remote logging is not enabled.
+  syslogd_flags: "-ss"
+
+  # Ensure nothing malicious in tempfiles at startup
+  clear_tmp_enable: "YES"
+
+  # Disable Sendmail
+  sendmail_enable: "NO"
+  sendmail_msp_queue_enable: "NO"
+  sendmail_outbound_enable: "NO"
+  sendmail_submit_enable: "NO"
+
+  # Enable firewall
+  pf_enable: "YES"
+
+  # Enable superior sshd
+  sshd_enable: "NO"
+  openssh_enable: "YES"
+  openssh_dsa_enable: "NO"
+  openssh_ecdsa_enable: "NO"
+
+  # Enable superior ntpd
+  ntpd_enable: "NO"
+  openntpd_enable: "YES"
+
+  # Optional tunables you can enable for increased security;
+  # disabled by default b/c you'll have to nuke the OS if you lock yourself out
+  # kern_securelevel_enable: "YES"
+  # kern_securelevel: "3"
+
+loader_tunables:
+  sysrc:
+    # Load pf module
+    pf_load: "YES"
+
+    # Load CUBIC TCP congestion control module
+    cc_cubic_load: "YES"
+
+    # Load encrypted swapfile module
+    geom_eli_load: "YES"
+
+  sysctl:
+    # Increase the minimum entropy pool size necessary to cause a reseed
+    kern.random.fortuna.minpoolsize: 128
+
+    # Disallow destructive DTrace
+    security.bsd.allow_destructive_dtrace: 0
