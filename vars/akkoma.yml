@@ -8,4 +8,4 @@ strip_uploads: true
 anonymize_uploads: true
 dedupe_uploads: true
 rum_indices: true
-mix_env: dev
+mix_env: prod
