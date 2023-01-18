@@ -28,6 +28,7 @@
       - postgresql13-server
       - postgresql13-client
       - postgresql13-contrib
+      - ca_root_nss
       - go119
       - ImageMagick7-nox11
       - ffmpeg

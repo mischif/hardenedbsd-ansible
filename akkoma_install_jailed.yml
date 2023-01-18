@@ -388,7 +388,9 @@
   tasks:
     - name: Install Caddy
       community.general.pkgng:
-        name: www/caddy
+        name:
+          - ca_root_nss
+          - caddy
         jail: caddy
 
     - name: Write Caddyfile
