@@ -60,21 +60,10 @@
   vars_files:
     - vars/system.yml
   tasks:
-    - name: Create update storage location
-      ansible.builtin.file:
-        path: /tmp/update
-        state: directory
-
     - name: Run hbsd-update
       ansible.builtin.command:
-        cmd: hbsd-update -dTt /tmp/update
+        cmd: hbsd-update -d
         creates: /var/db/hbsd-update/version
-
-    - name: Delete update
-      when: not keep_update
-      ansible.builtin.file:
-        path: /tmp/update
-        state: absent
 
 
 - name: Collect build dependencies

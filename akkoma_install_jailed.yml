@@ -15,12 +15,6 @@
   become: true
   become_method: su
   tasks:
-    - name: Create update directory
-      ansible.builtin.file:
-        path: /tmp/update
-        state: directory
-        mode: 0755
-
     - name: Create thinjail base directories
       loop:
         - /usr/local/jail/thin/base/usr
@@ -48,7 +42,7 @@
 
     - name: Install system in thinjail base
       ansible.builtin.command:
-        cmd: hbsd-update -dTt /tmp/update -r /usr/local/jail/thin/base/
+        cmd: hbsd-update -dr /usr/local/jail/thin/base/
         creates: /usr/local/jail/thin/base/COPYRIGHT
 
     - name: Unset flag to allow file deletion
