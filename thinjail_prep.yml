@@ -83,20 +83,29 @@
     remote_src: true
     mode: 0644
 
-# TODO redo this; create the symlink for /usr/home and make /home symlink there
 - name: Create symlinks from base to skeleton
   when: not thinjail_base.stat.exists
   loop:
     - etc
-    - home
     - root
     - tmp
+    - usr/home
     - usr/local
     - usr/ports
     - var
   ansible.builtin.file:
     dest: /usr/local/jail/thin/base/{{ item }}
     src: /skel/{{ item }}
+    state: link
+    force: true
+    follow: false
+    mode: 0755
+
+- name: Create special /home symlink
+  when: not thinjail_base.stat.exists
+  ansible.builtin.file:
+    dest: /usr/local/jail/thin/base/home
+    src: /skel/usr/home
     state: link
     force: true
     follow: false
