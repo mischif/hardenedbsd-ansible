@@ -1,0 +1,111 @@
+- name: Check if thinjail prep has already been completed
+  register: thinjail_base
+  ansible.builtin.stat:
+    path: /usr/local/jail/thin/base
+
+- name: Create base directories
+  when: not thinjail_base.stat.exists
+  loop:
+    - /usr/local/jail/thin/base/usr
+    - /usr/local/jail/thin/base/skel
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+
+- name: Create skeleton directories
+  when: not thinjail_base.stat.exists
+  loop:
+    - /usr/local/jail/thin/skeleton/usr/ports/distfiles
+    - /usr/local/jail/thin/skeleton/home
+    - /usr/local/jail/thin/skeleton/portsbuild
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+
+- name: Create data directory
+  when: not thinjail_base.stat.exists
+  ansible.builtin.file:
+    path: /usr/local/jail/thin/data/akkoma
+    state: directory
+    mode: 0755
+
+- name: Install system in base
+  when: not thinjail_base.stat.exists
+  ansible.builtin.command:
+    cmd: hbsd-update -dr /usr/local/jail/thin/base/
+    creates: /usr/local/jail/thin/base/COPYRIGHT
+
+- name: Unset flag to allow file deletion
+  when: not thinjail_base.stat.exists
+  ansible.builtin.command:
+    cmd: chflags noschg /usr/local/jail/thin/base/etc/secadm.d/base.integriforce.rules
+
+- name: Copy jail-unique files to skeleton
+  when: not thinjail_base.stat.exists
+  loop:
+    - etc
+    - root
+    - tmp
+    - usr/local
+    - var
+  ansible.builtin.copy:
+    src: /usr/local/jail/thin/base/{{ item }}/
+    dest: /usr/local/jail/thin/skeleton/{{ item }}
+    remote_src: true
+    mode: preserve
+
+- name: Delete jail-unique files from base
+  when: not thinjail_base.stat.exists
+  loop:
+    - etc
+    - root
+    - tmp
+    - usr/local
+    - var
+  ansible.builtin.file:
+    path: /usr/local/jail/thin/base/{{ item }}
+    state: absent
+
+- name: Update skeleton tmpdir permissions
+  when: not thinjail_base.stat.exists
+  ansible.builtin.file:
+    path: /usr/local/jail/thin/skeleton/tmp
+    state: touch
+    mode: 01777
+
+- name: Copy DNS info into skeleton
+  when: not thinjail_base.stat.exists
+  ansible.builtin.copy:
+    src: /etc/resolv.conf
+    dest: /usr/local/jail/thin/skeleton/etc/resolv.conf
+    remote_src: true
+    mode: 0644
+
+# TODO redo this; create the symlink for /usr/home and make /home symlink there
+- name: Create symlinks from base to skeleton
+  when: not thinjail_base.stat.exists
+  loop:
+    - etc
+    - home
+    - root
+    - tmp
+    - usr/local
+    - usr/ports
+    - var
+  ansible.builtin.file:
+    dest: /usr/local/jail/thin/base/{{ item }}
+    src: /skel/{{ item }}
+    state: link
+    force: true
+    follow: false
+    mode: 0755
+
+- name: Instruct ports to build in jail-unique space
+  when: not thinjail_base.stat.exists
+  ansible.builtin.lineinfile:
+    path: /usr/local/jail/thin/skeleton/etc/make.conf
+    create: true
+    line: WRKDIRPREFIX?=  /skel/portsbuild
+    mode: 0644

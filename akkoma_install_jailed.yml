@@ -9,106 +9,15 @@
         name: postgresql13-client
 
 
-- name: Prepare thinjails
+- name: Create service jails
   gather_facts: false
   hosts: all
   become: true
   become_method: su
   tasks:
-    - name: Create thinjail base directories
-      loop:
-        - /usr/local/jail/thin/base/usr
-        - /usr/local/jail/thin/base/skel
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: 0755
-
-    - name: Create thinjail skeleton directories
-      loop:
-        - /usr/local/jail/thin/skeleton/usr/ports/distfiles
-        - /usr/local/jail/thin/skeleton/home
-        - /usr/local/jail/thin/skeleton/portsbuild
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: 0755
-
-    - name: Create thinjail data directory
-      ansible.builtin.file:
-        path: /usr/local/jail/thin/data/akkoma
-        state: directory
-        mode: 0755
-
-    - name: Install system in thinjail base
-      ansible.builtin.command:
-        cmd: hbsd-update -dr /usr/local/jail/thin/base/
-        creates: /usr/local/jail/thin/base/COPYRIGHT
-
-    - name: Unset flag to allow file deletion
-      ansible.builtin.command:
-        cmd: chflags noschg /usr/local/jail/thin/base/etc/secadm.d/base.integriforce.rules
-
-    - name: Copy jail-unique files to skeleton
-      loop:
-        - etc
-        - root
-        - tmp
-        - usr/local
-        - var
-      ansible.builtin.copy:
-        src: /usr/local/jail/thin/base/{{ item }}/
-        dest: /usr/local/jail/thin/skeleton/{{ item }}
-        remote_src: true
-        mode: preserve
-
-    - name: Delete jail-unique files from base
-      loop:
-        - etc
-        - root
-        - tmp
-        - usr/local
-        - var
-      ansible.builtin.file:
-        path: /usr/local/jail/thin/base/{{ item }}
-        state: absent
-
-    - name: Update skeleton tmpdir permissions
-      ansible.builtin.file:
-        path: /usr/local/jail/thin/skeleton/tmp
-        state: touch
-        mode: 01777
-
-    - name: Copy DNS info into skeleton
-      ansible.builtin.copy:
-        src: /etc/resolv.conf
-        dest: /usr/local/jail/thin/skeleton/etc/resolv.conf
-        remote_src: true
-        mode: 0644
-
-    - name: Create symlinks from base to skeleton
-      loop:
-        - etc
-        - home
-        - root
-        - tmp
-        - usr/local
-        - usr/ports
-        - var
-      ansible.builtin.file:
-        dest: /usr/local/jail/thin/base/{{ item }}
-        src: /skel/{{ item }}
-        state: link
-        force: true
-        follow: false
-        mode: 0755
-
-    - name: Instruct ports to build in jail-unique space
-      ansible.builtin.lineinfile:
-        path: /usr/local/jail/thin/skeleton/etc/make.conf
-        create: true
-        line: WRKDIRPREFIX?=  /skel/portsbuild
-        mode: 0644
+    - name: Complete general thinjail prep
+      ansible.builtin.include_tasks:
+        file: thinjail_prep.yml
 
     - name: Create thinjails
       loop:
@@ -116,7 +25,7 @@
         - caddy
         - postgres
       ansible.builtin.include_tasks:
-        file: create_jail.yml
+        file: thinjail_create.yml
 
 
 - name: Prepare Akkoma jail
