@@ -45,7 +45,7 @@
       - ImageMagick7-nox11
       - ffmpeg
     upload_filters:
-      - Pleroma.Upload.Filter.AnonymizeFilename
+#      - Pleroma.Upload.Filter.AnonymizeFilename
       - Pleroma.Upload.Filter.Dedupe
   tasks:
     - name: Create service user
