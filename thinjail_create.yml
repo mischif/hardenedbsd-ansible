@@ -17,16 +17,16 @@
     dest: /usr/local/jail/{{ item }}.fstab
     mode: 0644
 
-- name: Write {{ item }} jail conf file
-  ansible.builtin.copy:
-    src: configs/thinjail/{{ item }}_jail_conf
-    dest: /etc/jail.conf.d/{{ item }}.conf
-    mode: 0644
-
 - name: Write {{ item }} jail rc.conf
   ansible.builtin.template:
-    src: configs/thinjail/jail_rc.j2
+    src: configs/thinjail/rc_conf.j2
     dest: /usr/local/jail/thin/data/{{ item }}/etc/rc.conf
+    mode: 0644
+
+- name: Write {{ item }} jail conf file
+  ansible.builtin.copy:
+    src: configs/thinjail/{{ item }}_conf
+    dest: /etc/jail.conf.d/{{ item }}.conf
     mode: 0644
 
 - name: Start {{ item }} thinjail
