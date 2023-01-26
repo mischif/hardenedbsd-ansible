@@ -87,9 +87,9 @@
   when: not thinjail_base.stat.exists
   loop:
     - etc
+    - home
     - root
     - tmp
-    - usr/home
     - usr/local
     - usr/ports
     - var
@@ -101,11 +101,11 @@
     follow: false
     mode: 0755
 
-- name: Create special /home symlink
+- name: Create special /usr/home symlink
   when: not thinjail_base.stat.exists
   ansible.builtin.file:
-    dest: /usr/local/jail/thin/base/home
-    src: /skel/usr/home
+    dest: /usr/local/jail/thin/base/usr/home
+    src: /skel/home
     state: link
     force: true
     follow: false
