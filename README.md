@@ -11,7 +11,7 @@ system_baseline
 The first playbook I run on a new system, meant to set some reasonable defaults I can build on. At a high level, this playbook:
 
 *	Switches from stock FreeBSD OpenSSL to LibreSSL
-*	Switches from stock Freebsd OpenSSH to the port compiled against LibreSSL
+*	Switches from stock FreeBSD OpenSSH to the port compiled against LibreSSL
 *	Randomizes the SSH port
 *	Enables a pf firewall with a default-deny policy
 *	Disables root login over SSH and console
@@ -53,3 +53,10 @@ akkoma_install_jailed
 ---------------------
 
 Functionally equivalent to the akkoma_install playbook, but installs Postgres/Akkoma/Caddy into their own separate BSD jails for additional security. The space/maintenance penalty shouldn't be that major since they're thinjails, and part of the reason you pick a BSD over Linux as your base OS is for weirdo features like this, so why not use it?
+
+	$ ansible-playbook akkoma_install_jailed.yml -i 192.168.56.101,
+
+Frontends are installed similarly:
+
+	# jexec akkoma su akkoma -c 'cd ~/akkoma && mix pleroma.frontend install pleroma-fe --ref stable'
+	# jexec akkoma su akkoma -c 'cd ~/akkoma && mix pleroma.frontend install admin-fe --ref stable'
